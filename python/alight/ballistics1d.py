@@ -7,8 +7,8 @@ the pressure term a P^n plus an erosive term that depends on the local mass flux
 
 Approximations: each cross-section regresses by its own web as it would under uniform burning (the
 usual 1-D ballistics assumption; axial coupling of the regression is ignored); the flow is
-quasi-steady with constant stagnation temperature; chamber filling, dynamic burning, the ignition
-transient and throat erosion are not modelled.
+quasi-steady with constant stagnation temperature; chamber filling, dynamic burning and the ignition
+transient are not modelled. Throat erosion is optional.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from alight.ballistics import IN, Nozzle, Propellant
+from alight.ballistics import IN, Nozzle, Propellant, ThroatErosion
 from alight.postprocess import BurnbackTable, extrapolate_tables, iso_area, make_table, tet_volume, triangle_area
 
 
@@ -139,6 +139,7 @@ class Ballistics1DResult:
     web: np.ndarray                # (times, stations), in
     rate: np.ndarray               # (times, stations), m/s
     z: np.ndarray                  # station centres, in
+    throat_diameter: np.ndarray    # m
 
     @property
     def expelled_mass(self) -> float:
@@ -146,7 +147,8 @@ class Ballistics1DResult:
 
 
 def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, erosive: LenoirRobillard | None = None,
-                dt: float = 2e-3, t_max: float = 60.0, max_web_step: float = 0.004) -> Ballistics1DResult:
+                throat_erosion: ThroatErosion | None = None, dt: float = 2e-3, t_max: float = 60.0,
+                max_web_step: float = 0.004) -> Ballistics1DResult:
     """March the station webs in time; at each step solve the steady port flow for the head-end pressure."""
     g = propellant.gamma
     half = (g - 1) / 2
@@ -156,7 +158,9 @@ def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, eros
     n = len(z)
     web_end = np.array([stations.web[np.flatnonzero(stations.perimeter[k] > 0)[-1] + 1] if stations.perimeter[k].any()
                         else 0.0 for k in range(n)])
-    exponent, density, c_star, throat = propellant.exponent, propellant.density, propellant.c_star, nozzle.throat_area
+    exponent, density, c_star = propellant.exponent, propellant.density, propellant.c_star
+    throat_radius = nozzle.throat_diameter / 2
+    throat = math.pi * throat_radius**2
     phi_sonic = (1 + g) / math.sqrt(1 + half)
     scale = math.sqrt(rt / g)
 
@@ -171,7 +175,7 @@ def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, eros
                 hi = mid
         return 0.5 * (lo + hi)
 
-    def flow(p_head, perimeter, area, length):
+    def flow(p_head, perimeter, area, length, throat):
         """Steady flow along the port for a head-end pressure, station by station.
 
         Returns the mass-flow mismatch at the nozzle (generated less discharged) and the station
@@ -206,26 +210,26 @@ def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, eros
             machs.append(mach)
             rates.append(rate)
         stagnation = p * (1 + half * mach * mach) ** (g / (g - 1))
-        return mdot - stagnation * throat / c_star, np.array(ps), np.array(machs), np.array(rates), mdot
+        return mdot - stagnation * throat / c_star, np.array(ps), np.array(machs), np.array(rates), mdot, stagnation
 
-    def solve(p_guess, perimeter, area, length):
+    def solve(p_guess, perimeter, area, length, throat):
         """Head-end pressure at which generated and discharged mass flow balance (bracketed secant)."""
         mismatch = lambda result: math.inf if result is None else result[0]
         lo = hi = p_guess
-        f_lo = f_hi = mismatch(flow(p_guess, perimeter, area, length))
+        f_lo = f_hi = mismatch(flow(p_guess, perimeter, area, length, throat))
         while f_hi > 0:                    # too little discharge, or choked: raise the pressure
             lo, f_lo = hi, f_hi
             hi *= 1.25
-            f_hi = mismatch(flow(hi, perimeter, area, length))
+            f_hi = mismatch(flow(hi, perimeter, area, length, throat))
         while f_lo < 0:
             hi, f_hi = lo, f_lo
             lo /= 1.25
-            f_lo = mismatch(flow(lo, perimeter, area, length))
+            f_lo = mismatch(flow(lo, perimeter, area, length, throat))
         result = None
         for _ in range(60):
             secant = hi - f_hi * (hi - lo) / (f_hi - f_lo) if math.isfinite(f_lo) else math.nan
             p = secant if lo < secant < hi else 0.5 * (lo + hi)
-            result = flow(p, perimeter, area, length)
+            result = flow(p, perimeter, area, length, throat)
             f = mismatch(result)
             if f > 0:
                 lo, f_lo = p, f
@@ -233,14 +237,14 @@ def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, eros
                 hi, f_hi = p, f
             if result is not None and (abs(f) < 1e-8 * result[4] or hi - lo < 1e-7 * hi):
                 return p, result
-        return hi, flow(hi, perimeter, area, length)
+        return hi, flow(hi, perimeter, area, length, throat)
 
     web = np.zeros(n)
     initial_area = (stations.perimeter[:, 0] * stations.dz).sum()
     perimeter, area = stations.at(web)
     # starting guess: the steady pressure for uniform burning
     p_head = (density * a * c_star * (perimeter * stations.dz).sum() * IN**2 / throat) ** (1 / (1 - exponent))
-    out = {key: [] for key in ("t", "head", "aft", "mach", "flow", "rate", "web", "rates")}
+    out = {key: [] for key in ("t", "head", "aft", "mach", "flow", "rate", "web", "rates", "throat")}
     t = 0.0
     while t < t_max:
         perimeter, area = stations.at(web)
@@ -249,15 +253,18 @@ def simulate_1d(stations: Stations, propellant: Propellant, nozzle: Nozzle, eros
             break
         wetted = np.where(perimeter > 0, perimeter, 2 * np.sqrt(math.pi * area))
         length = None if erosive is None else erosive.characteristic_length(z, 4 * area / wetted)
-        p_head, (_, p, mach, rate, mdot) = solve(p_head, perimeter, area, length)
+        p_head, (_, p, mach, rate, mdot, stagnation) = solve(p_head, perimeter, area, length, throat)
         if p_head < 1.5 * nozzle.ambient_pressure:
             break
-        for key, value in zip(out, (t, p_head, p[-1], mach.max(), mdot, rate.max(), web.copy(), rate)):
+        for key, value in zip(out, (t, p_head, p[-1], mach.max(), mdot, rate.max(), web.copy(), rate, 2 * throat_radius)):
             out[key].append(value)
         step = min(dt, max_web_step * IN / rate.max())
         web = np.minimum(web + np.where(perimeter > 0, rate, 0.0) * step / IN, web_end)
+        if throat_erosion is not None:
+            throat_radius += throat_erosion.rate(stagnation) * step
+            throat = math.pi * throat_radius**2
         t += step
     return Ballistics1DResult(t=np.array(out["t"]), head_pressure=np.array(out["head"]), aft_pressure=np.array(out["aft"]),
                               max_mach=np.array(out["mach"]), mass_flow=np.array(out["flow"]),
                               max_rate=np.array(out["rate"]), web=np.array(out["web"]),
-                              rate=np.array(out["rates"]), z=stations.z)
+                              rate=np.array(out["rates"]), z=stations.z, throat_diameter=np.array(out["throat"]))

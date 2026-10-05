@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 
-from alight.ballistics import AP_HTPB_AL, IN, PSI, Nozzle, equilibrium_pressure, simulate, size_throat
+from alight.ballistics import AP_HTPB_AL, IN, PSI, Nozzle, ThroatErosion, equilibrium_pressure, simulate, size_throat
 from alight.geometry import FinocylGrain, Grain, StarGrain, TaperedFinocylGrain, TubeGrain
 from alight.postprocess import extrapolate_tables, iso_area, make_table
 from alight.solve import make_cad, run_case
@@ -176,3 +176,28 @@ def test_erosive_burning_raises_pressure_in_a_narrow_port():
     assert erosive.max_rate[np.abs(erosive.t - late).argmin()] < 0.75 * erosive.max_rate[0]
     assert erosive.expelled_mass == pytest.approx(plain.expelled_mass, rel=0.02)
     assert erosive.t[-1] < plain.t[-1]
+
+
+def test_throat_erosion_lowers_pressure_and_conserves_mass():
+    from alight.ballistics1d import simulate_1d
+
+    web = np.linspace(0, 2, 201)
+    table = make_table(web, np.full_like(web, 1200.0), 900.0, 2400.0)
+    table.burn_area[-1] = 0.0
+    nozzle = Nozzle(2.5 * IN)
+    erosion = ThroatErosion(rate_ref=0.3e-3)                 # 0.3 mm/s at 6.9 MPa
+    fixed, eroding = simulate(table, AP_HTPB_AL, nozzle), simulate(table, AP_HTPB_AL, nozzle, throat_erosion=erosion)
+    assert eroding.throat_diameter[0] == pytest.approx(2.5 * IN)
+    growth = np.trapezoid([erosion.rate(p) for p in eroding.pressure], eroding.t)
+    assert eroding.throat_diameter[-1] - 2.5 * IN == pytest.approx(2 * growth, rel=0.02)
+    late = 0.9 * fixed.t[-1]
+    assert np.interp(late, eroding.t, eroding.pressure) < 0.95 * np.interp(late, fixed.t, fixed.pressure)
+    assert eroding.t[-1] > fixed.t[-1]                       # lower pressure burns slower
+    assert eroding.expelled_mass == pytest.approx(eroding.propellant_mass, rel=5e-3)
+
+    stations = _tube_stations(port_radius=1.5, length=10.0, n=20)
+    small = Nozzle(0.6 * IN)
+    plain, worn = simulate_1d(stations, AP_HTPB_AL, small), simulate_1d(stations, AP_HTPB_AL, small, throat_erosion=erosion)
+    assert worn.throat_diameter[-1] > worn.throat_diameter[0]
+    assert np.interp(1.5, worn.t, worn.head_pressure) < np.interp(1.5, plain.t, plain.head_pressure)
+    assert worn.expelled_mass == pytest.approx(plain.expelled_mass, rel=0.01)

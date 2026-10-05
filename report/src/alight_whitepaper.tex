@@ -123,7 +123,7 @@ volume. Kinks stay sharp and the propellant mass is conserved exactly.
 $\mathrm{d}P/\mathrm{d}t = (RT_c/V)\,[(\rho_p - \rho_g)A\,\dot r - P A_t/c^*]$ with
 $\dot r = aP^n$, free volume $V(w)$ from the burn table, and thrust $F = C_F P A_t$ for an ideal
 nozzle. A second, quasi-steady 1-D model resolves the flow along the port and adds erosive burning
-(\cref{sec:nawc}). Throat erosion, dynamic burning and the ignition transient are not modelled.
+(\cref{sec:nawc}). Throat erosion is optional; dynamic burning and the ignition transient are not modelled.
 
 \section{Validation against closed forms}
 \label{sec:closed}
@@ -289,11 +289,13 @@ with $G$ the local mass flux and $f(D_h)$ the program's fit in the hydraulic dia
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{nawc_motor6_erosive.pdf}
-\caption{NAWC motor no.~6 with the 1-D model. Left: head-end pressure with and without erosive burning against the measured trace; the band is $\alpha \pm 25\,\%$. Right: burn rate along the port at three times.}
+\caption{NAWC motor no.~6 with the 1-D model. Left: head-end pressure with and without erosive burning against the measured trace; the band is $\alpha \pm 25\,\%$, and the dashed line adds throat erosion. Right: burn rate along the port at three times.}
 \label{fig:erosive}
 \end{figure}
 
-\Cref{fig:erosive} shows the result. Over the quasi-steady part of the firing (0.3 to \SI{2.8}{s}) the predicted head-end pressure differs from the measurement by -1.7\,\% on average and 3.7\,\% RMS: 86 against 88\,atm at \SI{0.5}{s}, 72 against 75 at \SI{1}{s}, 67 against 68 at \SI{2}{s}. Without erosion the same model is 21\,\% low and has the wrong shape: progressive where the firing is regressive. The model reproduces the regressive trace because erosion is strongest at ignition (up to 2.6\,cm/s near the nozzle end against 0.6\,cm/s without) and fades as the port opens. The initial pressure is 157\,atm against a measured peak of 139\,atm; the model has no ignition transient, so only the level is comparable. The weakest point is the tail-off: the predicted pressure falls through half its plateau at 3.77\,s, the measured one at 3.27\,s. Each station regresses by its own web as under uniform burning, which is least accurate once the slots have burned through unevenly; throat erosion, which is not modelled, would also shorten the tail. The result is moderately sensitive to the assumed properties: changing $\alpha$ by $\pm25\,\%$ moves the RMS difference to 6.4\,\% and 2.8\,\%, and using the plain hydraulic diameter as the length scale gives 4.9\,\%.
+\Cref{fig:erosive} shows the result. Over the quasi-steady part of the firing (0.3 to \SI{2.8}{s}) the predicted head-end pressure differs from the measurement by -1.7\,\% on average and 3.7\,\% RMS: 86 against 88\,atm at \SI{0.5}{s}, 72 against 75 at \SI{1}{s}, 67 against 68 at \SI{2}{s}. Without erosion the same model is 21\,\% low and has the wrong shape: progressive where the firing is regressive. The model reproduces the regressive trace because erosion is strongest at ignition (up to 2.6\,cm/s near the nozzle end against 0.6\,cm/s without) and fades as the port opens. The initial pressure is 157\,atm against a measured peak of 139\,atm; the model has no ignition transient, so only the level is comparable. The weakest point is the tail-off: the predicted pressure falls through half its plateau at 3.77\,s, the measured one at 3.27\,s. Each station regresses by its own web as under uniform burning, which is least accurate once the slots have burned through unevenly. The result is moderately sensitive to the assumed properties: changing $\alpha$ by $\pm25\,\%$ moves the RMS difference to 6.4\,\% and 2.8\,\%, and using the plain hydraulic diameter as the length scale gives 4.9\,\%.
+
+\textbf{Throat erosion does not explain the tail.} A throat that opens during the burn was the obvious candidate, so an erosion law was added to both ballistic models (throat radius growing as $P^{0.8}$). The sources give neither the throat material nor an erosion rate, so two rates were tried on top of the erosive-burning run. Both make the comparison worse: at \SI{0.3}{mm/s} (at \SI{6.9}{MPa}; the throat ends at 1.94\,in) the RMS difference over the plateau rises from 3.7 to 8.3\,\% and the half-plateau time moves from 3.77 to 3.81\,s; at \SI{0.8}{mm/s} they are 17\,\% and 3.89\,s. A larger throat lowers the pressure, the lower pressure slows the burn, and the tail arrives later, not sooner. The baseline therefore keeps a fixed throat. What the firing does show is a smaller pressure integral than the model: 254 against 270\,atm\,s over the first \SI{4}{s}, or 6\,\% less, nearly all of it in the tail. That is what one would see if part of the propellant did not contribute at the end of the burn, for example slivers that go out as the pressure collapses, or if the delivered $c^*$ were lower than derived; the data here cannot tell these apart.
 
 \section{Portability}
 
@@ -314,9 +316,9 @@ build123d and gmsh, all of which publish Windows wheels, and calls nothing platf
   agree within 0.35\,\% across mesh pairs and within 0.6\,\% of an independent fast-marching
   solution.
 \item For NAWC motor no.~6, alight agrees with the published three-dimensional burnback simulation in initial burn area (2\,\%), pressure integral (3\,\%) and web at peak pressure (4\,\%), but its pressure is 14\,\% higher before the peak and it tails off sooner. The published curve implies a smoother burn-area history than the tabulated geometry gives at mesh convergence.
-\item With a 1-D flow model and Lenoir--Robillard erosive burning, the predicted head-end pressure of the same motor is within 3.7\,\% RMS of the measured trace over 0.3 to \SI{2.8}{s}, against 23\,\% without erosion, with no parameter fitted to the firing; three transport properties were assumed and the tail-off is about half a second late.
+\item With a 1-D flow model and Lenoir--Robillard erosive burning, the predicted head-end pressure of the same motor is within 3.7\,\% RMS of the measured trace over 0.3 to \SI{2.8}{s}, against 23\,\% without erosion, with no parameter fitted to the firing; three transport properties were assumed and the tail-off is about half a second late. Throat erosion was tried and makes the tail later, not earlier.
 \item Limits: the burnback itself assumes a uniform burn rate over the surface; the 1-D model applies
-  erosive burning station by station on top of that solution. No throat erosion, dynamic burning or ignition transient; propellant values in the worked example
+  erosive burning station by station on top of that solution. No dynamic burning or ignition transient; throat erosion is available but needs a rate from the user; propellant values in the worked example
   are representative, not a qualified formulation. No Solid Performance Program (SPP) case could be
   reproduced: SPP is export-controlled, and its public manual~\cite{spp} gives pressure traces for
   its validation motors but not their grain inputs.

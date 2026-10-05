@@ -33,6 +33,8 @@ The measured trace is then compared with a 1-D run that includes erosive burning
 the Lenoir-Robillard model in the form [1] quotes from the Solid Performance Program, with beta = 53
 and alpha computed from gas properties. The viscosity, the solid's specific heat and the surface
 temperature are not in the sources; typical values are assumed and their effect is reported.
+Throat erosion is tried as well. The sources give neither the throat material nor an erosion rate,
+so two rates are run to show the effect; they are not part of the baseline.
 
 Writes results/burn_table.csv, results/comparison.json, results/nawc_motor6.png and
 results/nawc_motor6_erosive.png (PDFs in report/fig).
@@ -49,7 +51,7 @@ from pathlib import Path
 import numpy as np
 
 from alight import style
-from alight.ballistics import IN, PSI, Nozzle, Propellant, simulate
+from alight.ballistics import IN, PSI, Nozzle, Propellant, ThroatErosion, simulate
 from alight.ballistics1d import LenoirRobillard, Stations, simulate_1d, stations_from_solutions
 from alight.geometry import TaperedFinocylGrain
 from alight.solve import burn_table, run_case, work_dir
@@ -80,6 +82,7 @@ SOLVER = dict(threads=6, cfl=2.0, iters=100000)
 FLAME_TEMPERATURE = 2713.0 + 273.15   # K, Table 3 of [2]
 # assumed, not in the sources: gas viscosity (Pa s), specific heat of the solid (J/kg/K), surface temperature (K)
 EROSION = dict(viscosity=8.5e-5, solid_specific_heat=1500.0, surface_temperature=1000.0)
+THROAT_EROSION_RATES = (0.3, 0.8)   # mm/s at 6.9 MPa; illustrative, no throat data in the sources
 
 
 def published() -> dict:
@@ -161,9 +164,13 @@ def main():
             "erosive": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=erosion),
             "erosive_alpha_minus_25pct": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, alpha=0.75 * erosion.alpha)),
             "erosive_alpha_plus_25pct": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, alpha=1.25 * erosion.alpha)),
-            "erosive_hydraulic_diameter": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, length="hydraulic"))}
+            "erosive_hydraulic_diameter": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, length="hydraulic")),
+            **{f"erosive_throat_erosion_{rate:g}mm_s": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=erosion,
+                                                                   throat_erosion=ThroatErosion(rate * 1e-3))
+               for rate in THROAT_EROSION_RATES}}
     steady = measured[measured[:, 0] > 0.25]            # after the ignition spike, which the model has no physics for
     window = np.linspace(0.3, 2.8, 120)                 # the quasi-steady part of the firing
+    integral_grid = np.linspace(0.0, 4.0, 2000)         # the measured trace ends near 4 s
 
     def against_measured(run):
         head = run.head_pressure / ATM
@@ -174,14 +181,17 @@ def main():
                 "mean_difference_0p3_to_2p8s_pct": float(difference.mean()),
                 "rms_difference_0p3_to_2p8s_pct": float(np.sqrt(np.mean(difference**2))),
                 "time_to_half_plateau_s": float(run.t[falling[0]]), "largest_burn_rate_cm_s": float(run.max_rate.max() * 100),
-                "largest_mach_number": float(run.max_mach.max()), "expelled_mass_kg": run.expelled_mass}
+                "largest_mach_number": float(run.max_mach.max()), "expelled_mass_kg": run.expelled_mass,
+                "pressure_integral_to_4s_atm_s": float(np.trapezoid(np.interp(integral_grid, run.t, head, right=0.0), integral_grid)),
+                "final_throat_diameter_in": float(run.throat_diameter[-1] / IN)}
 
     summary["one_dimensional"] = {
         "erosive_model": {"form": "Lenoir-Robillard with the SPP characteristic length", "beta": erosion.beta,
                           "alpha_si": erosion.alpha, "flame_temperature_K": FLAME_TEMPERATURE, "assumed": EROSION},
         **{name: against_measured(run) for name, run in runs.items()},
         "measured": {"head_pressure_atm": {f"{time:g}s": float(np.interp(time, *measured.T)) for time in (0.2, 0.5, 1.0, 2.0, 3.0)},
-                     "peak_atm": float(measured[:, 1].max()), "time_to_half_plateau_s": summary["measured"]["time_to_half_plateau_s"]},
+                     "peak_atm": float(measured[:, 1].max()), "time_to_half_plateau_s": summary["measured"]["time_to_half_plateau_s"],
+                     "pressure_integral_to_4s_atm_s": float(np.trapezoid(np.interp(integral_grid, *measured[np.argsort(measured[:, 0])].T), integral_grid))},
     }
     (RESULTS / "comparison.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
@@ -228,6 +238,9 @@ def main():
                       lw=0, label="alpha ± 25 %")
     left.plot(runs["erosive"].t, runs["erosive"].head_pressure / ATM, color="#d62728", lw=1.8, label="alight 1-D with erosive burning")
     left.plot(runs["no_erosion"].t, runs["no_erosion"].head_pressure / ATM, color="#d62728", lw=1.0, ls=":", label="alight 1-D, no erosion")
+    worn = runs[f"erosive_throat_erosion_{THROAT_EROSION_RATES[-1]:g}mm_s"]
+    left.plot(worn.t, worn.head_pressure / ATM, color="#1f3f8f", lw=1.0, ls="--",
+              label=f"with erosive burning and throat erosion, {THROAT_EROSION_RATES[-1]:g} mm/s")
     left.plot(*measured.T, color="k", lw=1.2, ls="-.", label="Willcox et al., measured")
     left.set_xlabel("time (s)")
     left.set_ylabel("head-end pressure (atm)")

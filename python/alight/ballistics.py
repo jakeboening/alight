@@ -1,7 +1,8 @@
 """Lumped (0-D) internal ballistics driven by a burn-area table.
 
 SI units inside; the burn table is in inches. Not modelled: erosive burning and
-axial pressure drop (see ballistics1d for those), throat erosion, ignition transient.
+axial pressure drop (see ballistics1d for those) and the ignition transient. Throat
+erosion is optional (ThroatErosion).
 """
 from __future__ import annotations
 
@@ -58,6 +59,21 @@ class Nozzle:
         return math.pi * self.throat_diameter**2 / 4
 
 
+@dataclass(frozen=True)
+class ThroatErosion:
+    """Throat radius growing at rate_ref * (P / p_ref)^exponent, in m/s.
+
+    The exponent 0.8 is the pressure dependence of convective heat transfer at the throat. The
+    reference rate depends on the throat material and the propellant and has to be supplied.
+    """
+    rate_ref: float
+    p_ref: float = 6.9e6
+    exponent: float = 0.8
+
+    def rate(self, p):
+        return self.rate_ref * (max(p, 0.0) / self.p_ref) ** self.exponent
+
+
 def exit_pressure_ratio(gamma: float, expansion_ratio: float) -> float:
     """p_exit / p_chamber for supersonic isentropic flow at the given area ratio."""
     g = gamma
@@ -111,6 +127,7 @@ class BallisticsResult:
     burn_area: np.ndarray   # in^2
     propellant_mass: float  # kg
     expelled_mass: float    # kg
+    throat_diameter: np.ndarray | None = None   # m, when throat erosion is modelled
 
     @property
     def peak_pressure(self) -> float:
@@ -150,25 +167,26 @@ class BallisticsResult:
 
 
 def simulate(table: BurnbackTable, propellant: Propellant, nozzle: Nozzle,
-             t_max: float = 120.0, dt_out: float = 0.002) -> BallisticsResult:
+             t_max: float = 120.0, dt_out: float = 0.002, throat_erosion: ThroatErosion | None = None) -> BallisticsResult:
     web_tab = table.web * IN
     area_tab = table.burn_area * IN**2
     volume_tab = table.free_volume * IN**3
     web_end = web_tab[-1]
     rt = propellant.gas_rt
     p_amb = nozzle.ambient_pressure
+    exit_area = nozzle.throat_area * nozzle.expansion_ratio
 
     def state(web):
         return (np.interp(web, web_tab, area_tab, right=0.0), np.interp(web, web_tab, volume_tab))
 
     def rhs(t, y):
-        web, p = y
+        web, p, radius = y
         area, volume = state(web)
         rate = float(propellant.burn_rate(p)) if web < web_end else 0.0
         # the nozzle only discharges once the chamber is above ambient
-        m_out = p * nozzle.throat_area / propellant.c_star if p > p_amb else 0.0
+        m_out = p * math.pi * radius**2 / propellant.c_star if p > p_amb else 0.0
         dp = rt / volume * ((propellant.density - p / rt) * area * rate - m_out)
-        return [rate, dp]
+        return [rate, dp, throat_erosion.rate(p) if throat_erosion is not None and p > p_amb else 0.0]
 
     def tailed_off(t, y):
         # End of the run: chamber pressure falling through 1.5 atmospheres. Thin slivers can keep burning
@@ -177,14 +195,20 @@ def simulate(table: BurnbackTable, propellant: Propellant, nozzle: Nozzle,
     tailed_off.terminal = True
     tailed_off.direction = -1
 
-    sol = solve_ivp(rhs, (0.0, t_max), [0.0, p_amb], method="LSODA", events=tailed_off,
-                    max_step=0.01, rtol=1e-8, atol=[1e-10, 1e-2], dense_output=True)
+    sol = solve_ivp(rhs, (0.0, t_max), [0.0, p_amb, nozzle.throat_diameter / 2], method="LSODA", events=tailed_off,
+                    max_step=0.01, rtol=1e-8, atol=[1e-10, 1e-2, 1e-12], dense_output=True)
     t = np.arange(0.0, sol.t[-1], dt_out)
-    web, p = sol.sol(t)
+    web, p, radius = sol.sol(t)
     web = np.minimum(web, web_end)
-    force = thrust(p, propellant, nozzle)
-    m_out = np.where(p > p_amb, p * nozzle.throat_area / propellant.c_star, 0.0)
+    throat_area = math.pi * radius**2
+    if throat_erosion is None:
+        force = thrust(p, propellant, nozzle)
+    else:   # the exit stays the same size, so the expansion ratio falls as the throat opens
+        force = np.array([thrust(pk, propellant, Nozzle(2 * rk, exit_area / (math.pi * rk**2), p_amb))
+                          for pk, rk in zip(p, radius)])
+    m_out = np.where(p > p_amb, p * throat_area / propellant.c_star, 0.0)
     return BallisticsResult(t=t, pressure=p, thrust=force, web=web / IN,
                             burn_area=np.interp(web, web_tab, area_tab, right=0.0) / IN**2,
                             propellant_mass=propellant.density * table.burned_volume[-1] * IN**3,
-                            expelled_mass=float(np.trapezoid(m_out, t)))
+                            expelled_mass=float(np.trapezoid(m_out, t)),
+                            throat_diameter=2 * radius if throat_erosion is not None else None)
