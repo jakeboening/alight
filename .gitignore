@@ -11,3 +11,14 @@ docs/doxygen
 *.obj
 *.mtl
 build/
+# Python pipeline
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+_work/
+*.aux
+*.out
+*.log
+!cli/tests/*.json
+!examples/*/results/*.json

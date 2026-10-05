@@ -1,0 +1,22 @@
+{
+  "peak_pressure_psi": 1000.0000104524295,
+  "mean_pressure_psi": 688.7690297553484,
+  "burn_time_s": 9.82,
+  "peak_thrust_lbf": 9355.128558244107,
+  "total_impulse_lbf_s": 61558.726972192664,
+  "total_impulse_kN_s": 273.8268836097008,
+  "specific_impulse_s": 253.87018144338836,
+  "propellant_mass_kg": 109.98759727451403,
+  "expelled_mass_kg": 109.94443167661214,
+  "throat_diameter_in": 2.7039217896858423,
+  "expansion_ratio": 8.0,
+  "propellant": "AP/HTPB/Al composite (68/18/14)",
+  "initial_burn_area_in2": 1207.8419218150877,
+  "peak_burn_area_in2": 1574.2220756394988,
+  "web_at_peak_area_in": 1.0011017010848646,
+  "web_burnout_in": 2.9995556586812424,
+  "final_pair_in": [
+    0.075,
+    0.05
+  ]
+}

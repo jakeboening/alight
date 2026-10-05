@@ -1,0 +1,17 @@
+{
+  "final_table": "tables/extrapolated_h0.075_h0.05.csv",
+  "final_pair_in": [
+    0.075,
+    0.05
+  ],
+  "reference_table": "tables/reference_fmm_dx0.035.csv",
+  "propellant": "AP/HTPB/Al composite (68/18/14)",
+  "throat_diameter_in": 2.7039217896858423,
+  "expansion_ratio": 8.0,
+  "design_peak_pressure_psi": 1000.0000000000001,
+  "observed_order_raw": {
+    "peak_pressure_psi": 0.8109819483508824,
+    "burn_time_s": 0.976597751944812,
+    "web_burnout_in": 1.0405675321489303
+  }
+}

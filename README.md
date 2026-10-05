@@ -1,37 +1,86 @@
 # alight
 
-A fork of [burnback-3d](https://codeberg.org/iff/burnback-3d) that adds `alight`, a command-line front end
-to its solver. `alight` needs no Qt and no display: it reads a mesh, runs the burnback-3d kernels to a
-steady burn-time field and writes the result, so the solver can be scripted, run in batch or driven by
-another program. The Qt GUI and everything else in burnback-3d are unchanged and documented below.
+Solid-propellant grain burnback that runs from a command line and a Python script, with no GUI in the
+loop. alight is a fork of [burnback-3d](https://codeberg.org/iff/burnback-3d) that adds:
 
-## alight
+- **`alight`**, a command-line front end to the burnback-3d solver. It needs no Qt and no display and
+  builds on Linux, Windows and macOS with nothing but CMake and a C++17 compiler.
+- **A Python pipeline** (`python/alight`): parametric grain → build123d CAD → Gmsh tetrahedra → `alight`
+  → burn area against web → extrapolation to zero element size → 0-D chamber pressure and thrust.
+- **Worked examples and a validation report**: closed-form grains, a published motor, a mesh
+  sensitivity study, a video and a quad chart.
 
-Build (any platform with CMake and a C++17 compiler; no other dependencies):
+The burnback-3d GUI and everything else upstream are unchanged; the original README follows
+[below](#burnback-3d).
+
+![Finocyl example](examples/01_finocyl/results/quad_chart.png)
+
+## Why
+
+The motivation is control by a language model. A GUI solver needs a person to click through mesh
+import, boundary panels and export; an LLM agent cannot drive that reliably or check its own work.
+Here every step is text in, text out:
+
+- A grain is a handful of numbers in a Python dataclass (or its JSON form).
+- Each stage is one command or one function call, and none of them prompts.
+- Results are CSV and JSON, so an agent can read back what it produced, compare it with a closed
+  form, and decide what to do next.
+- The closed-form cases and the mesh sensitivity study are scripts in the repository, so "is this
+  answer right?" is something the agent can run, not something it has to assert.
+
+The finocyl example, its sensitivity study and the report in this repository were produced that way.
+
+## Install
 
 ```shell
 git clone --recursive https://github.com/jakeboening/alight
-cmake -S alight -B alight/build
-cmake --build alight/build --config Release
-ctest --test-dir alight/build -C Release      # solves a small cube and checks the answer
-cmake --install alight/build                  # optional: puts alight on the PATH
+cd alight
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build -C Release          # solves a small cube and checks the answer
+python -m pip install -e ".[full]"         # the Python pipeline; Python 3.10 or newer
+python -m pytest tests                     # CAD, mesh, solver and burn area on small grains
 ```
 
-Prebuilt Linux, Windows and macOS binaries are attached to the
-[releases](https://github.com/jakeboening/alight/releases).
+The pipeline needs the `alight` executable. It looks, in order, at the `ALIGHT` environment variable,
+the `PATH`, and `build/` in this checkout, and stops with instructions if it finds none. Prebuilt
+binaries are attached to the [releases](https://github.com/jakeboening/alight/releases);
+`cmake --install build` puts a local build on the `PATH`.
 
-Run:
+`[full]` adds scikit-fmm and scikit-image (independent reference solution) and imageio-ffmpeg (video).
+The core needs only numpy, scipy, matplotlib, build123d and gmsh. Nothing is Linux-specific.
+
+## Use
+
+```python
+from alight.geometry import FinocylGrain
+from alight.solve import burn_table
+from alight.ballistics import AP_HTPB_AL, PSI, simulate, size_throat
+
+grain = FinocylGrain(case_diameter=10, port_diameter=4, length=60, n_fins=6,
+                     fin_width=1, fin_tip_radius=4, fin_length=20, fin_start=40)   # inches
+table = burn_table(grain, "work", sizes=(0.2, 0.1))        # two meshes, extrapolated
+nozzle = size_throat(table, AP_HTPB_AL, 1000 * PSI)        # throat for a 1000 psi peak
+result = simulate(table, AP_HTPB_AL, nozzle)
+print(result.summary())
+```
+
+Grain types: `TubeGrain` (hollow cylinder; BATES with burning ends), `StarGrain`, `FinocylGrain`
+(straight fins over part of the length) and `TaperedFinocylGrain` (bore and slots defined at axial
+stations). Lengths are inches.
+
+The solver on its own:
 
 ```shell
 alight mesh.json out --tol 1e-4 --iters 20000
 ```
 
-`mesh.json` is the burnback-3d mesh format described under [Usage](#usage) (`tools/mesh_convert.py`
-makes one from a Gmsh mesh). Three files are written:
+`mesh.json` is the burnback-3d mesh format (`python -m alight.mesh` writes it; so does
+`tools/mesh_convert.py` from a Gmsh file). Three files are written:
 
-- `out.u.f64`: burn time at every node, in mesh node order, as raw little-endian 64-bit floats. With the
-  default recession speed of 1 this is the distance burned (web) when the flame reaches the node.
-- `out.meta.json`: node and element counts, iterations, time step, final residual, `converged`, `diverged`.
+- `out.u.f64`: burn time at every node, in mesh node order, as raw little-endian 64-bit floats. With
+  the default recession speed of 1 this is the web burned when the flame reaches the node.
+- `out.meta.json`: node and element counts, iterations, time step, residual, `converged`, `diverged`.
 - `out.history.csv`: residual per iteration.
 
 | Option | Default | Meaning |
@@ -43,20 +92,44 @@ makes one from a Gmsh mesh). Three files are written:
 | `--json` | | Also write the GUI's result file (mesh plus `burnbackResults`). |
 | `--expect-max` | | Exit with an error unless the largest burn time is within 5 % of this value. |
 
-The exit status is 0 on success, 3 if the iteration diverged.
+Exit status: 0 on success, 3 if the iteration diverged, 4 if `--expect-max` failed.
 
-The scheme is first-order accurate: the burn time lags by an amount proportional to the element size.
-Solving on two meshes and extrapolating to zero element size removes that error; see
-[burnback](https://github.com/jakeboening/burnback) for a pipeline that does this.
+## Accuracy
 
-Changes to burnback-3d in this fork:
+The burnback-3d scheme is first-order accurate: its burn time lags by an amount proportional to the
+element size, which shifts the burn-area curve by a few percent on a practical mesh. The pipeline
+therefore solves two meshes and extrapolates to zero element size. What that buys, from the examples:
+
+| Check | Result |
+| --- | --- |
+| Closed-form tube, BATES and star grains, 15 geometries ([example 02](examples/02_analytic_validation)) | burn area within 0.27 % of the closed form over the first 95 % of the web (one BATES case 0.79 % next to its burnout discontinuity); RMS at most 0.20 % |
+| Finocyl mesh sensitivity, 0.4 to 0.05 in elements ([example 01](examples/01_finocyl)) | raw peak pressure drifts 5.6 %; extrapolated pairs agree within 0.35 %, the last two within 0.05 % |
+| Same finocyl against an independent fast-marching solution | 0.55 % in peak pressure, 0.26 % in burn time, 0.22 % in total impulse |
+| NAWC motor no. 6 against a published 3-D burnback simulation ([example 03](examples/03_nawc_motor6)) | with c* fitted as the one free constant: plateau pressure within 1.4 % RMS, peak within 3 % in level and time, tail-off 14 % shorter; 14 % higher pressure without the fit |
+
+The report, [`report/src/alight_whitepaper.pdf`](report/src/alight_whitepaper.pdf), has the method and
+these results in full. Not modelled: erosive burning, axial pressure drop, throat erosion, ignition
+transient.
+
+## Layout
+
+- `cli/` the `alight` command line; `src/` the burnback-3d solver and GUI; `CMakeLists.txt` builds `alight`
+- `python/alight/` the pipeline: `geometry`, `cad`, `mesh`, `solve`, `postprocess`, `ballistics`,
+  `fmm_check` (independent reference), `sensitivity`, `sections`, `video`, `quad_chart`
+- `examples/` worked cases, see [`examples/README.md`](examples/README.md)
+- `report/` the whitepaper; `references/` sources; `tests/` pipeline tests
+
+## Changes to burnback-3d
 
 - `cli/alight.cpp`, `CMakeLists.txt` and a test mesh (`cli/tests/cube.json`).
 - `src/headers/globals.h` and `src/iosystem.cpp` compile without Qt when `ALIGHT_HEADLESS` is defined.
 - `src/interface.cpp`: the GUI's time step used a variable that no longer exists (`maxHeight`); it now
   uses `minHeight`.
 
-Licensed under the GNU Affero General Public License v3 or later, like burnback-3d.
+## License
+
+GNU Affero General Public License v3 or later, like burnback-3d: see [`LICENSE`](LICENSE) for the
+notice and [`COPYING`](COPYING) for the full text.
 
 ---
 

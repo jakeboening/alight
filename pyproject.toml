@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alight"
+version = "0.1.0"
+description = "Python pipeline around the alight burnback solver: build123d CAD, Gmsh mesh, burn area, 0-D internal ballistics"
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7", "build123d>=0.9", "gmsh>=4.11"]
+
+[project.optional-dependencies]
+# independent fast-marching reference (burnback.fmm_check)
+reference = ["scikit-fmm", "scikit-image>=0.22"]
+video = ["imageio-ffmpeg"]
+dev = ["pytest"]
+full = ["scikit-fmm", "scikit-image>=0.22", "imageio-ffmpeg", "pytest"]
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
