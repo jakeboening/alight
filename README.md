@@ -1,3 +1,65 @@
+# alight
+
+A fork of [burnback-3d](https://codeberg.org/iff/burnback-3d) that adds `alight`, a command-line front end
+to its solver. `alight` needs no Qt and no display: it reads a mesh, runs the burnback-3d kernels to a
+steady burn-time field and writes the result, so the solver can be scripted, run in batch or driven by
+another program. The Qt GUI and everything else in burnback-3d are unchanged and documented below.
+
+## alight
+
+Build (any platform with CMake and a C++17 compiler; no other dependencies):
+
+```shell
+git clone --recursive https://github.com/jakeboening/alight
+cmake -S alight -B alight/build
+cmake --build alight/build --config Release
+ctest --test-dir alight/build -C Release      # solves a small cube and checks the answer
+cmake --install alight/build                  # optional: puts alight on the PATH
+```
+
+Prebuilt Linux, Windows and macOS binaries are attached to the
+[releases](https://github.com/jakeboening/alight/releases).
+
+Run:
+
+```shell
+alight mesh.json out --tol 1e-4 --iters 20000
+```
+
+`mesh.json` is the burnback-3d mesh format described under [Usage](#usage) (`tools/mesh_convert.py`
+makes one from a Gmsh mesh). Three files are written:
+
+- `out.u.f64`: burn time at every node, in mesh node order, as raw little-endian 64-bit floats. With the
+  default recession speed of 1 this is the distance burned (web) when the flame reaches the node.
+- `out.meta.json`: node and element counts, iterations, time step, final residual, `converged`, `diverged`.
+- `out.history.csv`: residual per iteration.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--cfl` | 1 | Pseudo-time step factor. The converged field does not depend on it. |
+| `--iters` | 300 | Maximum number of iterations. |
+| `--weight` | 1 | Diffusive weight. Values below about 0.75 diverge. |
+| `--tol` | 0 | Stop when the largest nodal rate of change falls below this; 0 runs all iterations. |
+| `--json` | | Also write the GUI's result file (mesh plus `burnbackResults`). |
+| `--expect-max` | | Exit with an error unless the largest burn time is within 5 % of this value. |
+
+The exit status is 0 on success, 3 if the iteration diverged.
+
+The scheme is first-order accurate: the burn time lags by an amount proportional to the element size.
+Solving on two meshes and extrapolating to zero element size removes that error; see
+[burnback](https://github.com/jakeboening/burnback) for a pipeline that does this.
+
+Changes to burnback-3d in this fork:
+
+- `cli/alight.cpp`, `CMakeLists.txt` and a test mesh (`cli/tests/cube.json`).
+- `src/headers/globals.h` and `src/iosystem.cpp` compile without Qt when `ALIGHT_HEADLESS` is defined.
+- `src/interface.cpp`: the GUI's time step used a variable that no longer exists (`maxHeight`); it now
+  uses `minHeight`.
+
+Licensed under the GNU Affero General Public License v3 or later, like burnback-3d.
+
+---
+
 # Burnback-3d
 
 Analysis of 3D burn surfaces for solid propellant rockets using tetrahedra based Time Marching Method as an alternative of the Level Set Method. Key features:

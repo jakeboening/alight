@@ -14,6 +14,7 @@
 using namespace std;
 using json = nlohmann::json;
 
+#ifndef ALIGHT_HEADLESS
 void readInput() { //{{{
 	input.uInitial = root->findChild<QObject *>("initialCondition")->property("text").toDouble();
 	input.resume = root->findChild<QObject *>("resume")->property("checked").toBool();
@@ -25,6 +26,7 @@ void readInput() { //{{{
 	input.diffusiveWeight = root->findChild<QObject *>("diffusiveWeight")->property("text").toDouble();
 }
 //}}}
+#endif
 
 namespace Json { //{{{
 void readMesh(std::string &filepath) {

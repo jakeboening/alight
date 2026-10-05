@@ -172,7 +172,7 @@ void Actions::worker() {
 	maxRecession = Nodes::getMaxRecession();
 
 	emit newOutput("--> Starting time step");
-	timeStep = maxHeight * input.cfl / (maxRecession);
+	timeStep = minHeight * input.cfl / (maxRecession);
 
 	emit newOutput("--> Starting subiteration loop");
 	if (currentIter < input.targetIter)

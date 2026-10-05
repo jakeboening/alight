@@ -10,3 +10,4 @@ docs/doxygen
 *.msh
 *.obj
 *.mtl
+build/

@@ -1,7 +1,14 @@
 #pragma once
 
+// alight: the headless command-line build defines ALIGHT_HEADLESS and needs no Qt
+#ifndef ALIGHT_HEADLESS
 #include <QQmlApplicationEngine>
 #include <QString>
+#else
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+#endif
 #include <array>
 #include <map>
 #include <src/headers/types.h>
@@ -15,8 +22,10 @@ enum {
 	OUTLET_SYMMETRY = 23
 };
 
+#ifndef ALIGHT_HEADLESS
 inline QObject *root;
 inline QString tmpDir;
+#endif
 
 inline Input input;
 inline Mesh mesh;

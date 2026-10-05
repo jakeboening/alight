@@ -1,0 +1,51 @@
+name: alight
+
+on:
+  push:
+    branches: [main]
+    tags: ["alight-v*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, name: linux-x86_64, exe: alight}
+          - {os: windows-latest, name: windows-x86_64, exe: Release/alight.exe}
+          - {os: macos-latest, name: macos-arm64, exe: alight}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+          cp "build/${{ matrix.exe }}" dist/
+          cp LICENSE dist/
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a ../alight-${{ matrix.name }}.zip .
+          else
+            tar czf ../alight-${{ matrix.name }}.tar.gz .
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alight-${{ matrix.name }}
+          path: alight-${{ matrix.name }}.*
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/alight-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: alight-${{ matrix.name }}.*
