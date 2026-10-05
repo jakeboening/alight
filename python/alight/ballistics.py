@@ -1,7 +1,7 @@
 """Lumped (0-D) internal ballistics driven by a burn-area table.
 
-SI units inside; the burn table is in inches. Not modelled: erosive burning,
-axial pressure drop, throat erosion, ignition transient.
+SI units inside; the burn table is in inches. Not modelled: erosive burning and
+axial pressure drop (see ballistics1d for those), throat erosion, ignition transient.
 """
 from __future__ import annotations
 

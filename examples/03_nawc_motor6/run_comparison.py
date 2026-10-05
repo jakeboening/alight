@@ -29,7 +29,13 @@ Three comparisons that do not depend on the unknown c* are made besides the pres
   - the burn area against web implied by the published trace (quasi-steady inversion), with c*
     taken from the published trace's own pressure integral.
 
-Writes results/burn_table.csv, results/comparison.json and results/nawc_motor6.png (PDF in report/fig).
+The measured trace is then compared with a 1-D run that includes erosive burning (alight.ballistics1d):
+the Lenoir-Robillard model in the form [1] quotes from the Solid Performance Program, with beta = 53
+and alpha computed from gas properties. The viscosity, the solid's specific heat and the surface
+temperature are not in the sources; typical values are assumed and their effect is reported.
+
+Writes results/burn_table.csv, results/comparison.json, results/nawc_motor6.png and
+results/nawc_motor6_erosive.png (PDFs in report/fig).
 
 Usage: python run_comparison.py
 """
@@ -37,12 +43,14 @@ from __future__ import annotations
 
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from alight import style
 from alight.ballistics import IN, PSI, Nozzle, Propellant, simulate
+from alight.ballistics1d import LenoirRobillard, Stations, simulate_1d, stations_from_solutions
 from alight.geometry import TaperedFinocylGrain
 from alight.solve import burn_table, run_case, work_dir
 
@@ -69,6 +77,9 @@ PROPELLANT = Propellant(name='NAWC reduced-smoke propellant "A"', density=1800.0
                         p_ref=6.9e6, exponent=0.36, c_star=C_STAR, gamma=GAMMA)
 NOZZLE = Nozzle(1.84 * IN)
 SOLVER = dict(threads=6, cfl=2.0, iters=100000)
+FLAME_TEMPERATURE = 2713.0 + 273.15   # K, Table 3 of [2]
+# assumed, not in the sources: gas viscosity (Pa s), specific heat of the solid (J/kg/K), surface temperature (K)
+EROSION = dict(viscosity=8.5e-5, solid_specific_heat=1500.0, surface_temperature=1000.0)
 
 
 def published() -> dict:
@@ -139,6 +150,39 @@ def main():
         "measured": {"pressure_at_2s_atm": float(np.interp(2.0, *measured.T)), "design_pressure_atm": 1000 * PSI / ATM,
                      "time_to_half_plateau_s": float(measured[(measured[:, 0] > 2.0) & (measured[:, 1] < 0.5 * np.interp(2.0, *measured.T))][0, 0])},
     }
+    # ---- 1-D ballistics with erosive burning, against the measured head-end pressure ----
+    station_file = WORK / "stations.npz"
+    if not station_file.exists():
+        solutions = [run_case(GRAIN, WORK / f"h{size:g}", size, caddir=WORK / "cad", **SOLVER) for size in SIZES]
+        stations_from_solutions(*solutions, SIZES[0] / SIZES[1]).save(station_file)
+    stations = Stations.load(station_file)
+    erosion = LenoirRobillard.from_properties(PROPELLANT, flame_temperature=FLAME_TEMPERATURE, **EROSION)
+    runs = {"no_erosion": simulate_1d(stations, PROPELLANT, NOZZLE),
+            "erosive": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=erosion),
+            "erosive_alpha_minus_25pct": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, alpha=0.75 * erosion.alpha)),
+            "erosive_alpha_plus_25pct": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, alpha=1.25 * erosion.alpha)),
+            "erosive_hydraulic_diameter": simulate_1d(stations, PROPELLANT, NOZZLE, erosive=replace(erosion, length="hydraulic"))}
+    steady = measured[measured[:, 0] > 0.25]            # after the ignition spike, which the model has no physics for
+    window = np.linspace(0.3, 2.8, 120)                 # the quasi-steady part of the firing
+
+    def against_measured(run):
+        head = run.head_pressure / ATM
+        difference = 100 * (np.interp(window, run.t, head) / np.interp(window, *steady.T) - 1)
+        plateau = np.interp(2.0, run.t, head)
+        falling = np.flatnonzero((head < 0.5 * plateau) & (run.t > 2.0))
+        return {"head_pressure_atm": {f"{time:g}s": float(np.interp(time, run.t, head)) for time in (0.0, 0.2, 0.5, 1.0, 2.0, 3.0)},
+                "mean_difference_0p3_to_2p8s_pct": float(difference.mean()),
+                "rms_difference_0p3_to_2p8s_pct": float(np.sqrt(np.mean(difference**2))),
+                "time_to_half_plateau_s": float(run.t[falling[0]]), "largest_burn_rate_cm_s": float(run.max_rate.max() * 100),
+                "largest_mach_number": float(run.max_mach.max()), "expelled_mass_kg": run.expelled_mass}
+
+    summary["one_dimensional"] = {
+        "erosive_model": {"form": "Lenoir-Robillard with the SPP characteristic length", "beta": erosion.beta,
+                          "alpha_si": erosion.alpha, "flame_temperature_K": FLAME_TEMPERATURE, "assumed": EROSION},
+        **{name: against_measured(run) for name, run in runs.items()},
+        "measured": {"head_pressure_atm": {f"{time:g}s": float(np.interp(time, *measured.T)) for time in (0.2, 0.5, 1.0, 2.0, 3.0)},
+                     "peak_atm": float(measured[:, 1].max()), "time_to_half_plateau_s": summary["measured"]["time_to_half_plateau_s"]},
+    }
     (RESULTS / "comparison.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
 
@@ -175,6 +219,37 @@ def main():
     for folder, suffix in ((RESULTS, ".png"), (FIGURES, ".pdf")):
         folder.mkdir(parents=True, exist_ok=True)
         fig.savefig(folder / f"nawc_motor6{suffix}", bbox_inches="tight")
+    plt.close(fig)
+
+    fig, (left, right) = plt.subplots(1, 2, figsize=(10.5, 3.8), dpi=150, gridspec_kw=dict(wspace=0.26))
+    band = [runs["erosive_alpha_minus_25pct"], runs["erosive_alpha_plus_25pct"]]
+    grid = np.linspace(0.0, min(run.t[-1] for run in band), 600)
+    left.fill_between(grid, *(np.interp(grid, run.t, run.head_pressure / ATM) for run in band), color="#d62728", alpha=0.18,
+                      lw=0, label="alpha ± 25 %")
+    left.plot(runs["erosive"].t, runs["erosive"].head_pressure / ATM, color="#d62728", lw=1.8, label="alight 1-D with erosive burning")
+    left.plot(runs["no_erosion"].t, runs["no_erosion"].head_pressure / ATM, color="#d62728", lw=1.0, ls=":", label="alight 1-D, no erosion")
+    left.plot(*measured.T, color="k", lw=1.2, ls="-.", label="Willcox et al., measured")
+    left.set_xlabel("time (s)")
+    left.set_ylabel("head-end pressure (atm)")
+    left.set_title("NAWC motor no. 6: head-end pressure")
+    left.set_xlim(0, 6)
+    left.set_ylim(0, 170)
+    left.grid(True, alpha=0.25)
+    left.legend(fontsize=8, frameon=False, loc="upper right")
+    for name, line, label in (("erosive", "-", "with erosive burning"), ("no_erosion", ":", "no erosion")):
+        run = runs[name]
+        for time, color in ((0.15, "#d62728"), (1.0, "#e58a2c"), (2.5, "#1f3f8f")):
+            row = np.abs(run.t - time).argmin()
+            right.plot(run.z * 2.54, run.rate[row] * 100, color=color, ls=line, lw=1.5 if line == "-" else 1.0,
+                       label=f"t = {time:g} s, {label}")
+    right.set_xlabel("axial location (cm)")
+    right.set_ylabel("burn rate (cm/s)")
+    right.set_title("Burn rate along the port")
+    right.set_ylim(0, None)
+    right.grid(True, alpha=0.25)
+    right.legend(fontsize=7.5, frameon=False, ncol=2, loc="upper left")
+    for folder, suffix in ((RESULTS, ".png"), (FIGURES, ".pdf")):
+        fig.savefig(folder / f"nawc_motor6_erosive{suffix}", bbox_inches="tight")
     plt.close(fig)
 
 

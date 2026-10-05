@@ -8,23 +8,23 @@
   "gamma_assumed": 1.2,
   "c_star_derived_m_s": 1524.4282171050265,
   "alight": {
-    "pressure_at_1s_atm": 55.24667164924973,
-    "pressure_at_3s_atm": 58.91415610671902,
-    "peak_pressure_atm": 71.9468550305337,
+    "pressure_at_1s_atm": 55.24667106220476,
+    "pressure_at_3s_atm": 58.91415628669539,
+    "peak_pressure_atm": 71.94685605659782,
     "time_of_peak_s": 4.2540000000000004,
     "time_to_half_peak_s": 4.676,
-    "pressure_integral_atm_s": 297.36402441753677,
-    "web_at_peak_pressure_in": 1.0647765050942075,
-    "plateau_difference_from_published_pct": 14.19056944497189
+    "pressure_integral_atm_s": 297.36402592532295,
+    "web_at_peak_pressure_in": 1.0647765042171364,
+    "plateau_difference_from_published_pct": 14.190569387303622
   },
   "alight_coarse_mesh_only": {
-    "pressure_at_1s_atm": 50.66292775535544,
-    "pressure_at_3s_atm": 55.60331572787176,
-    "peak_pressure_atm": 67.59690607535475,
+    "pressure_at_1s_atm": 50.66292763975184,
+    "pressure_at_3s_atm": 55.60331691559428,
+    "peak_pressure_atm": 67.5969083160365,
     "time_of_peak_s": 4.472,
     "time_to_half_peak_s": 5.04,
     "element_size_in": 0.1,
-    "plateau_difference_from_published_pct": 6.877470341778965
+    "plateau_difference_from_published_pct": 6.877470176948075
   },
   "published_0d_strand_rate": {
     "pressure_at_1s_atm": 48.53,
@@ -41,5 +41,109 @@
     "pressure_at_2s_atm": 67.54446366782007,
     "design_pressure_atm": 68.04596101653097,
     "time_to_half_plateau_s": 3.2693
+  },
+  "one_dimensional": {
+    "erosive_model": {
+      "form": "Lenoir-Robillard with the SPP characteristic length",
+      "beta": 53.0,
+      "alpha_si": 1.0257140898850703e-05,
+      "flame_temperature_K": 2986.15,
+      "assumed": {
+        "viscosity": 8.5e-05,
+        "solid_specific_heat": 1500.0,
+        "surface_temperature": 1000.0
+      }
+    },
+    "no_erosion": {
+      "head_pressure_atm": {
+        "0s": 60.146592369925756,
+        "0.2s": 56.92544983657332,
+        "0.5s": 56.71361096278436,
+        "1s": 58.2753801838517,
+        "2s": 55.84986614824927,
+        "3s": 59.98259273536132
+      },
+      "mean_difference_0p3_to_2p8s_pct": -21.278112978423483,
+      "rms_difference_0p3_to_2p8s_pct": 22.505073280519245,
+      "time_to_half_plateau_s": 4.799999999999693,
+      "largest_burn_rate_cm_s": 0.6887330028958419,
+      "largest_mach_number": 0.5747488650378603,
+      "expelled_mass_kg": 33.798819070093074
+    },
+    "erosive": {
+      "head_pressure_atm": {
+        "0s": 156.99628459985234,
+        "0.2s": 102.95893714276139,
+        "0.5s": 86.04160937069565,
+        "1s": 71.6616467543091,
+        "2s": 66.63162227269375,
+        "3s": 61.04550999781863
+      },
+      "mean_difference_0p3_to_2p8s_pct": -1.748280010860483,
+      "rms_difference_0p3_to_2p8s_pct": 3.7230489485686764,
+      "time_to_half_plateau_s": 3.765999999999807,
+      "largest_burn_rate_cm_s": 2.628239364413758,
+      "largest_mach_number": 0.5627139982629452,
+      "expelled_mass_kg": 33.77774982738906
+    },
+    "erosive_alpha_minus_25pct": {
+      "head_pressure_atm": {
+        "0s": 128.1210543829198,
+        "0.2s": 92.83410277224183,
+        "0.5s": 80.8704655595691,
+        "1s": 69.95264892310499,
+        "2s": 64.29512934451931,
+        "3s": 70.72563917062526
+      },
+      "mean_difference_0p3_to_2p8s_pct": -5.438675144575177,
+      "rms_difference_0p3_to_2p8s_pct": 6.350432928069886,
+      "time_to_half_plateau_s": 3.981999999999783,
+      "largest_burn_rate_cm_s": 1.955386644662056,
+      "largest_mach_number": 0.5660414793291397,
+      "expelled_mass_kg": 33.7832811294293
+    },
+    "erosive_alpha_plus_25pct": {
+      "head_pressure_atm": {
+        "0s": 189.00104216245097,
+        "0.2s": 112.23766732268523,
+        "0.5s": 90.2995197709437,
+        "1s": 73.3162712639302,
+        "2s": 68.86932604041728,
+        "3s": 54.00693672438009
+      },
+      "mean_difference_0p3_to_2p8s_pct": 0.6004813999196974,
+      "rms_difference_0p3_to_2p8s_pct": 2.816868642186134,
+      "time_to_half_plateau_s": 3.5699999999998284,
+      "largest_burn_rate_cm_s": 3.416112884713481,
+      "largest_mach_number": 0.5594912800369969,
+      "expelled_mass_kg": 33.77145211521284
+    },
+    "erosive_hydraulic_diameter": {
+      "head_pressure_atm": {
+        "0s": 160.28336205767718,
+        "0.2s": 101.29787984271516,
+        "0.5s": 84.14155197308267,
+        "1s": 70.36119106690971,
+        "2s": 65.33241060541273,
+        "3s": 66.89046711957036
+      },
+      "mean_difference_0p3_to_2p8s_pct": -3.613506490594214,
+      "rms_difference_0p3_to_2p8s_pct": 4.911668858410907,
+      "time_to_half_plateau_s": 3.847999999999798,
+      "largest_burn_rate_cm_s": 2.7166507642840574,
+      "largest_mach_number": 0.5644192993299888,
+      "expelled_mass_kg": 33.77806985307612
+    },
+    "measured": {
+      "head_pressure_atm": {
+        "0.2s": 113.15717241379309,
+        "0.5s": 87.90911917098445,
+        "1s": 74.87598673300165,
+        "2s": 67.54446366782007,
+        "3s": 56.19069124423963
+      },
+      "peak_atm": 139.41,
+      "time_to_half_plateau_s": 3.2693
+    }
   }
 }

@@ -7,40 +7,47 @@ from pathlib import Path
 import numpy as np
 
 
-def iso_area(points, tets, u, levels):
-    """Area of the iso-surfaces u = level of a piecewise-linear field (marching tetrahedra)."""
+def iso_area(points, tets, u, levels, bins=None):
+    """Area of the iso-surfaces u = level of a piecewise-linear field (marching tetrahedra).
+
+    With `bins = (bin index of every tetrahedron, number of bins)` the area is returned per bin,
+    as an array (levels, bins); otherwise as one total per level.
+    """
     ut = u[tets]
     order = np.argsort(ut, axis=1)
     us = np.take_along_axis(ut, order, axis=1)
     ts = np.take_along_axis(tets, order, axis=1)
-    areas = np.zeros(len(levels))
+    areas = np.zeros(len(levels)) if bins is None else np.zeros((len(levels), bins[1]))
     for n, w in enumerate(levels):
-        active = (us[:, 0] < w) & (us[:, 3] > w)
-        if not active.any():
+        active = np.flatnonzero((us[:, 0] < w) & (us[:, 3] > w))
+        if not active.size:
             continue
         a = us[active]
         p = points[ts[active]]
         below = (a < w).sum(axis=1)
+        piece = np.zeros(len(active))
 
         def cut(rows, i, j):
             t = (w - a[rows, i]) / (a[rows, j] - a[rows, i])
             return p[rows, i] + t[:, None] * (p[rows, j] - p[rows, i])
 
-        total = 0.0
         rows = np.flatnonzero(below == 1)
         if rows.size:
             q0, q1, q2 = cut(rows, 0, 1), cut(rows, 0, 2), cut(rows, 0, 3)
-            total += 0.5 * np.linalg.norm(np.cross(q1 - q0, q2 - q0), axis=1).sum()
+            piece[rows] = 0.5 * np.linalg.norm(np.cross(q1 - q0, q2 - q0), axis=1)
         rows = np.flatnonzero(below == 3)
         if rows.size:
             q0, q1, q2 = cut(rows, 0, 3), cut(rows, 1, 3), cut(rows, 2, 3)
-            total += 0.5 * np.linalg.norm(np.cross(q1 - q0, q2 - q0), axis=1).sum()
+            piece[rows] = 0.5 * np.linalg.norm(np.cross(q1 - q0, q2 - q0), axis=1)
         rows = np.flatnonzero(below == 2)
         if rows.size:
             # planar quadrilateral: half the cross product of its diagonals
             q0, q1, q2, q3 = cut(rows, 0, 2), cut(rows, 0, 3), cut(rows, 1, 3), cut(rows, 1, 2)
-            total += 0.5 * np.linalg.norm(np.cross(q2 - q0, q3 - q1), axis=1).sum()
-        areas[n] = total
+            piece[rows] = 0.5 * np.linalg.norm(np.cross(q2 - q0, q3 - q1), axis=1)
+        if bins is None:
+            areas[n] = piece.sum()
+        else:
+            areas[n] = np.bincount(bins[0][active], weights=piece, minlength=bins[1])
     return areas
 
 

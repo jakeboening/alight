@@ -133,3 +133,46 @@ def test_wedge_matches_full_grain(tmp_path):
     assert wedge.web_burnout == pytest.approx(full.web_burnout, rel=0.01)
     web = np.linspace(0.2, 2.6, 13)
     assert wedge.area_at(web) == pytest.approx(full.area_at(web), rel=0.05)
+
+
+def _tube_stations(port_radius, case_radius=2.5, length=40.0, n=40):
+    from alight.ballistics1d import Stations
+
+    web = np.linspace(0.0, case_radius - port_radius, 201)
+    radius = port_radius + web
+    perimeter = np.tile(2 * math.pi * radius, (n, 1))
+    perimeter[:, -1] = 0.0
+    return Stations(z=(np.arange(n) + 0.5) * length / n, dz=np.full(n, length / n), web=web, perimeter=perimeter,
+                    port_area=np.tile(math.pi * radius**2, (n, 1)), case_area=math.pi * case_radius**2)
+
+
+def test_1d_ballistics_reduces_to_0d_in_a_wide_port():
+    from alight.ballistics1d import simulate_1d
+
+    stations = _tube_stations(port_radius=1.5, length=10.0, n=20)
+    nozzle = Nozzle(0.6 * IN)                       # port-to-throat area ratio 25: negligible port velocity
+    lumped = simulate(stations.burn_table, AP_HTPB_AL, nozzle)
+    resolved = simulate_1d(stations, AP_HTPB_AL, nozzle)
+    for t in (0.5, 1.0, 1.5):
+        assert np.interp(t, resolved.t, resolved.head_pressure) == pytest.approx(np.interp(t, lumped.t, lumped.pressure), rel=0.02)
+    assert resolved.expelled_mass == pytest.approx(lumped.propellant_mass, rel=0.01)
+    assert resolved.max_mach.max() < 0.1
+
+
+def test_erosive_burning_raises_pressure_in_a_narrow_port():
+    from alight.ballistics1d import LenoirRobillard, simulate_1d
+
+    stations = _tube_stations(port_radius=0.45)
+    nozzle = Nozzle(0.75 * IN)                      # port-to-throat area ratio 1.44 at ignition
+    erosion = LenoirRobillard.from_properties(AP_HTPB_AL, flame_temperature=3400.0, viscosity=9e-5,
+                                              solid_specific_heat=1500.0, surface_temperature=1000.0)
+    plain = simulate_1d(stations, AP_HTPB_AL, nozzle)
+    erosive = simulate_1d(stations, AP_HTPB_AL, nozzle, erosive=erosion)
+    assert plain.head_pressure[0] > plain.aft_pressure[0] * 1.1         # pressure drop along the port
+    assert erosive.head_pressure[0] > 1.2 * plain.head_pressure[0]      # erosion adds mass early
+    assert erosive.rate[0, -1] > erosive.rate[0, 0]                     # and most near the nozzle end
+    # erosion fades as the port opens, and the same propellant is burned sooner
+    late = 0.8 * erosive.t[-1]
+    assert erosive.max_rate[np.abs(erosive.t - late).argmin()] < 0.75 * erosive.max_rate[0]
+    assert erosive.expelled_mass == pytest.approx(plain.expelled_mass, rel=0.02)
+    assert erosive.t[-1] < plain.t[-1]
