@@ -1,32 +1,45 @@
 {
   "propellant_volume_in3": 1153.1548076609358,
+  "propellant_mass_kg": 34.0142789430854,
   "initial_burn_area_in2": 791.8757771849253,
   "peak_burn_area_in2": 1032.357547736168,
+  "web_at_peak_area_in": 1.0637116449836528,
   "web_burnout_in": 1.7053493306351144,
   "gamma_assumed": 1.2,
   "c_star_derived_m_s": 1524.4282171050265,
-  "c_star_fitted_m_s": 1400.7779086950254,
-  "alight_c_star_derived": {
+  "alight": {
+    "pressure_at_1s_atm": 55.24667164924973,
+    "pressure_at_3s_atm": 58.91415610671902,
     "peak_pressure_atm": 71.9468550305337,
     "time_of_peak_s": 4.2540000000000004,
     "time_to_half_peak_s": 4.676,
-    "plateau_mean_difference_pct": 14.139817429983555,
-    "plateau_rms_difference_pct": 14.176428193213718
+    "pressure_integral_atm_s": 297.36402441753677,
+    "web_at_peak_pressure_in": 1.0647765050942075,
+    "plateau_difference_from_published_pct": 14.19056944497189
   },
-  "alight_c_star_fitted": {
-    "peak_pressure_atm": 62.99137198324221,
-    "time_of_peak_s": 4.462,
-    "time_to_half_peak_s": 4.906,
-    "plateau_mean_difference_pct": -0.4015163153627777,
-    "plateau_rms_difference_pct": 1.3755373521859995
+  "alight_coarse_mesh_only": {
+    "pressure_at_1s_atm": 50.66292775535544,
+    "pressure_at_3s_atm": 55.60331572787176,
+    "peak_pressure_atm": 67.59690607535475,
+    "time_of_peak_s": 4.472,
+    "time_to_half_peak_s": 5.04,
+    "element_size_in": 0.1,
+    "plateau_difference_from_published_pct": 6.877470341778965
   },
   "published_0d_strand_rate": {
+    "pressure_at_1s_atm": 48.53,
+    "pressure_at_3s_atm": 51.38,
     "peak_pressure_atm": 61.11,
     "time_of_peak_s": 4.6046,
-    "time_to_half_peak_s": 5.6941
+    "time_to_half_peak_s": 5.6941,
+    "pressure_integral_atm_s": 307.41920004800323,
+    "web_at_peak_pressure_in": 1.1049972818716765,
+    "web_at_end_in": 1.5927712933974632,
+    "c_star_implied_by_pressure_integral_m_s": 1571.0112398778926
   },
   "measured": {
-    "plateau_pressure_atm": 67.54446366782007,
+    "pressure_at_2s_atm": 67.54446366782007,
+    "design_pressure_atm": 68.04596101653097,
     "time_to_half_plateau_s": 3.2693
   }
 }

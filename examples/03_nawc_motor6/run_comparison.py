@@ -16,14 +16,18 @@ face is taken as burning because only the forward face is marked inhibited.
 
 Propellant "A" of [2]: 1.80 g/cm3, 0.678 cm/s at 6.9 MPa, exponent 0.36, speed of sound 1083 m/s in
 the chamber. Neither source gives c*; it is derived from the speed of sound with an assumed
-gamma = 1.2. Throat diameter 1.84 in, no erosion. Because c* is the one input not taken from the
-sources, a second run fits it to the plateau of the published simulation; that single constant
-sets the pressure level, and the shape and timing of the trace are then a test of the burn area.
+gamma = 1.2. Throat diameter 1.84 in, no erosion.
 
 [1] simulates the motor with the Rocgrain 3-D burnback code and a 0-D chamber model. Its run with
 the strand burn rate is the like-for-like reference for this pipeline. The measured pressure is
 higher and the burn shorter; [1] attributes this to erosive and dynamic burning, which neither its
 0-D strand-rate run nor this pipeline models.
+
+Three comparisons that do not depend on the unknown c* are made besides the pressure trace itself:
+  - the pressure integral, which a mass balance fixes at (propellant mass) * c* / (throat area);
+  - the web burned when the pressure peaks, found by integrating the burn-rate law along the trace;
+  - the burn area against web implied by the published trace (quasi-steady inversion), with c*
+    taken from the published trace's own pressure integral.
 
 Writes results/burn_table.csv, results/comparison.json and results/nawc_motor6.png (PDF in report/fig).
 
@@ -33,15 +37,14 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from alight import style
-from alight.ballistics import IN, Nozzle, Propellant, simulate
+from alight.ballistics import IN, PSI, Nozzle, Propellant, simulate
 from alight.geometry import TaperedFinocylGrain
-from alight.solve import burn_table, work_dir
+from alight.solve import burn_table, run_case, work_dir
 
 HERE = Path(__file__).resolve().parent
 RESULTS = HERE / "results"
@@ -65,6 +68,7 @@ C_STAR = SOUND_SPEED / (GAMMA * (2 / (GAMMA + 1)) ** ((GAMMA + 1) / (2 * (GAMMA 
 PROPELLANT = Propellant(name='NAWC reduced-smoke propellant "A"', density=1800.0, burn_rate_ref=0.678e-2,
                         p_ref=6.9e6, exponent=0.36, c_star=C_STAR, gamma=GAMMA)
 NOZZLE = Nozzle(1.84 * IN)
+SOLVER = dict(threads=6, cfl=2.0, iters=100000)
 
 
 def published() -> dict:
@@ -75,46 +79,64 @@ def published() -> dict:
     return {name: np.array(points) for name, points in curves.items()}
 
 
-def burn_duration(t, p):
-    """Time at which the pressure falls through half its maximum on the way down."""
-    falling = np.flatnonzero((p[1:] < 0.5 * p.max()) & (np.arange(1, len(p)) > p.argmax()))
-    return float(t[falling[0] + 1])
+def invert(t, p_atm, mass):
+    """Web, burn area and c* implied by a pressure trace under the strand burn-rate law.
+
+    Web is the time integral of a P^n. The pressure integral times the throat area equals the
+    propellant mass times c*. Quasi-steady burn area then follows from P^(1-n).
+    """
+    grid = np.linspace(0.0, t.max(), 6000)
+    p = np.interp(grid, t, p_atm, left=p_atm[0]) * ATM
+    a = PROPELLANT.burn_rate_ref / PROPELLANT.p_ref ** PROPELLANT.exponent
+    rate = a * p ** PROPELLANT.exponent
+    web = np.concatenate([[0.0], np.cumsum(0.5 * (rate[1:] + rate[:-1]) * np.diff(grid))])
+    integral = float(np.trapezoid(p, grid))
+    c_star = NOZZLE.throat_area * integral / mass
+    area = p ** (1 - PROPELLANT.exponent) * NOZZLE.throat_area / (PROPELLANT.density * a * c_star)
+    return {"web_in": web / IN, "area_in2": area / IN**2, "pressure_integral_atm_s": integral / ATM,
+            "c_star_m_s": c_star, "web_at_peak_in": float(web[p.argmax()] / IN), "web_at_end_in": float(web[-1] / IN)}
+
+
+def facts(t, p):
+    after_peak = np.flatnonzero((p < 0.5 * p.max()) & (t > t[p.argmax()]))
+    return {"pressure_at_1s_atm": float(np.interp(1.0, t, p)), "pressure_at_3s_atm": float(np.interp(3.0, t, p)),
+            "peak_pressure_atm": float(p.max()), "time_of_peak_s": float(t[p.argmax()]),
+            "time_to_half_peak_s": float(t[after_peak[0]])}
 
 
 def main():
-    # the tapered slots leave a few thin elements, which set a small pseudo-time step: allow more
-    # iterations and use the larger stable CFL number (the converged field does not depend on it)
-    table = burn_table(GRAIN, WORK, SIZES, threads=6, cfl=2.0, iters=100000)
+    coarse = run_case(GRAIN, WORK / f"h{SIZES[0]:g}", SIZES[0], caddir=WORK / "cad", **SOLVER).table()
+    # the tapered slots leave a few thin elements, which set a small pseudo-time step: SOLVER allows more
+    # iterations and uses the larger stable CFL number (the converged field does not depend on it)
+    table = burn_table(GRAIN, WORK, SIZES, **SOLVER)
     RESULTS.mkdir(exist_ok=True)
     table.save(RESULTS / "burn_table.csv")
+    mass = PROPELLANT.density * table.propellant_volume * IN**3
     reference = published()
     strand, measured = reference["simulated_0d_strand_rate"], reference["measured"]
-    plateau = np.linspace(0.3, 3.0, 100)        # after the published run's start-up, before its final rise
 
-    def run(c_star):
-        result = simulate(table, replace(PROPELLANT, c_star=c_star), NOZZLE)
+    def run(burn):
+        result = simulate(burn, PROPELLANT, NOZZLE)
         return result.t, result.pressure / ATM
 
-    def facts(t, p):
-        difference = 100 * (np.interp(plateau, t, p) / np.interp(plateau, *strand.T) - 1)
-        return {"peak_pressure_atm": float(p.max()), "time_of_peak_s": float(t[p.argmax()]),
-                "time_to_half_peak_s": burn_duration(t, p), "plateau_mean_difference_pct": float(difference.mean()),
-                "plateau_rms_difference_pct": float(np.sqrt(np.mean(difference**2)))}
-
-    t, p = run(C_STAR)
-    # pressure scales as c*^(1/(1-n)), so the plateau ratio gives the fitted value directly
-    ratio = np.mean(np.interp(plateau, *strand.T) / np.interp(plateau, t, p))
-    c_star_fitted = C_STAR * ratio ** (1 - PROPELLANT.exponent)
-    t_fit, p_fit = run(c_star_fitted)
+    t, p = run(table)
+    t_coarse, p_coarse = run(coarse)
+    ours, theirs = invert(t, p, mass), invert(*strand.T, mass)
+    plateau = np.linspace(0.5, 3.0, 100)
+    level = lambda time, pressure: float(np.mean(100 * (np.interp(plateau, time, pressure) / np.interp(plateau, *strand.T) - 1)))
     summary = {
-        "propellant_volume_in3": table.propellant_volume, "initial_burn_area_in2": float(table.burn_area[0]),
-        "peak_burn_area_in2": float(table.burn_area.max()), "web_burnout_in": table.web_burnout,
-        "gamma_assumed": GAMMA, "c_star_derived_m_s": C_STAR, "c_star_fitted_m_s": float(c_star_fitted),
-        "alight_c_star_derived": facts(t, p), "alight_c_star_fitted": facts(t_fit, p_fit),
-        "published_0d_strand_rate": {"peak_pressure_atm": float(strand[:, 1].max()),
-                                     "time_of_peak_s": float(strand[strand[:, 1].argmax(), 0]),
-                                     "time_to_half_peak_s": burn_duration(*strand.T)},
-        "measured": {"plateau_pressure_atm": float(np.interp(2.0, *measured.T)),
+        "propellant_volume_in3": table.propellant_volume, "propellant_mass_kg": mass,
+        "initial_burn_area_in2": float(table.burn_area[0]), "peak_burn_area_in2": float(table.burn_area.max()),
+        "web_at_peak_area_in": float(table.web[table.burn_area.argmax()]), "web_burnout_in": table.web_burnout,
+        "gamma_assumed": GAMMA, "c_star_derived_m_s": C_STAR,
+        "alight": {**facts(t, p), "pressure_integral_atm_s": ours["pressure_integral_atm_s"],
+                   "web_at_peak_pressure_in": ours["web_at_peak_in"], "plateau_difference_from_published_pct": level(t, p)},
+        "alight_coarse_mesh_only": {**facts(t_coarse, p_coarse), "element_size_in": SIZES[0],
+                                    "plateau_difference_from_published_pct": level(t_coarse, p_coarse)},
+        "published_0d_strand_rate": {**facts(*strand.T), "pressure_integral_atm_s": theirs["pressure_integral_atm_s"],
+                                     "web_at_peak_pressure_in": theirs["web_at_peak_in"], "web_at_end_in": theirs["web_at_end_in"],
+                                     "c_star_implied_by_pressure_integral_m_s": theirs["c_star_m_s"]},
+        "measured": {"pressure_at_2s_atm": float(np.interp(2.0, *measured.T)), "design_pressure_atm": 1000 * PSI / ATM,
                      "time_to_half_plateau_s": float(measured[(measured[:, 0] > 2.0) & (measured[:, 1] < 0.5 * np.interp(2.0, *measured.T))][0, 0])},
     }
     (RESULTS / "comparison.json").write_text(json.dumps(summary, indent=2))
@@ -126,17 +148,23 @@ def main():
 
     style.apply(9.5)
     fig, (left, right) = plt.subplots(1, 2, figsize=(10.5, 3.8), dpi=150, gridspec_kw=dict(wspace=0.26))
-    left.plot(table.web, table.burn_area, color="0.15", lw=1.6)
+    left.plot(table.web, table.burn_area, color="#d62728", lw=1.8, label="alight, extrapolated")
+    left.plot(coarse.web, coarse.burn_area, color="#d62728", lw=1.0, ls=":", label=f"alight, {SIZES[0]:g} in mesh only")
+    left.plot(theirs["web_in"], theirs["area_in2"], color="#1f3f8f", lw=1.4, ls="--",
+              label="implied by the published 0-D trace")
     left.set_xlabel("web burned (in)")
     left.set_ylabel("burn area (in²)")
-    left.set_title("NAWC motor no. 6: burn area from alight")
-    left.set_xlim(0, None)
-    left.set_ylim(0, None)
+    left.set_title("NAWC motor no. 6: burn area")
+    left.set_xlim(0, 1.9)
+    left.set_ylim(0, 1250)
     left.grid(True, alpha=0.25)
-    right.plot(t, p, color="#d62728", lw=1.8, label=f"alight + 0-D, c* = {C_STAR:.0f} m/s (derived)")
-    right.plot(t_fit, p_fit, color="#d62728", lw=1.2, ls="-.", label=f"alight + 0-D, c* = {c_star_fitted:.0f} m/s (fitted to plateau)")
+    left.legend(fontsize=8, frameon=False, loc="lower left")
+    right.plot(t, p, color="#d62728", lw=1.8, label="alight + 0-D, extrapolated")
+    right.plot(t_coarse, p_coarse, color="#d62728", lw=1.0, ls=":", label=f"alight + 0-D, {SIZES[0]:g} in mesh only")
     right.plot(*strand.T, color="#1f3f8f", lw=1.4, ls="--", label="Willcox et al., Rocgrain + 0-D, strand burn rate")
-    right.plot(*measured.T, color="0.35", lw=1.0, ls=":", label="Willcox et al., measured")
+    right.plot(*measured.T, color="0.35", lw=1.0, ls="-.", label="Willcox et al., measured")
+    right.axhline(1000 * PSI / ATM, color="0.6", lw=0.8)
+    right.text(7.4, 1000 * PSI / ATM + 1.5, "design pressure", fontsize=7.5, color="0.4", ha="right")
     right.set_xlabel("time (s)")
     right.set_ylabel("chamber pressure (atm)")
     right.set_title("Chamber pressure")

@@ -269,12 +269,16 @@ rate, which makes the same modelling assumptions as this pipeline.
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{nawc_motor6.pdf}
-\caption{NAWC motor no.~6. Left: burn area from alight. Right: chamber pressure from alight with
-0-D ballistics, the published 0-D simulation with the strand burn rate, and the measured trace.}
+\caption{NAWC motor no.~6. Left: burn area from alight, and the burn area implied by the published 0-D trace
+(quasi-steady inversion with the strand burn rate). Right: chamber pressure.}
 \label{fig:nawc}
 \end{figure}
 
-With the propellant data as published and the derived $c^*$, the predicted trace has the shape of the published simulation but sits 14\,\% higher over the plateau (0.3 to \SI{3}{s}) and peaks 8\,\% earlier. That is the size of offset an uncertain $c^*$ produces: pressure scales as $(c^*)^{1/(1-n)}$. Fitting that one constant to the published plateau gives $c^* = 1401$\,m/s. With it, the plateau agrees within 1.4\,\% RMS, the peak pressure within 3\,\% (63.0 against 61.1\,atm) and the time of the peak within 3\,\% (4.46 against 4.60\,s). The progressive rise to the peak, which is set by the slots burning outward, is reproduced. The tail-off is not: alight's pressure falls through half its peak at 4.9\,s, the published simulation at 5.7\,s. The cause was not isolated; candidates are the simplifications listed above and differences in how the two 0-D models treat the slivers. The measured trace is higher and much shorter than both simulations (plateau near 68\,atm, burnout near 3.3\,s). Willcox et al. attribute that to erosive and dynamic burning and reproduce it only with a modified burn rate, so the measurement tests the ballistic model, not the burnback.
+\textbf{What agrees.} Three checks do not depend on the unknown $c^*$ or on how sharply a code resolves the burn area. (i) The initial burn area: 792\,in$^2$ from alight against 806\,in$^2$ implied by the first point of the published trace (2\,\%). (ii) The pressure integral, which a mass balance fixes at propellant mass times $c^*$ over throat area: 297 against 307\,atm\,s (3\,\%); this also shows the derived $c^*$ is close to the one behind the published run (1571\,m/s for the same propellant mass). (iii) The web burned when the pressure peaks, which marks the slot tips reaching the case: 1.06 against 1.10\,in (4\,\%; the slot-tip webs in Figure~7 are 1.085 to 1.133\,in).
+
+\textbf{What does not.} Between ignition and the peak, alight's pressure is 14\,\% above the published simulation, it peaks higher and earlier (72\,atm at 4.25\,s against 61\,atm at 4.60\,s) and it tails off sooner (half the peak at 4.7\,s against 5.7\,s). The left panel shows why: the published trace implies a burn area about a tenth lower before the slot tips reach the case and much higher after, with a rounded peak in place of a corner. Since the two start from the same area and release the same total, the difference is in how the area is distributed over the burn, not in the inputs. A lower $c^*$ cannot explain it: lowering $c^*$ until the plateaus match (to about \SI{1400}{m/s}) would mean the published run burned 12\,\% more propellant than the grain holds.
+
+The difference has the signature of burnback resolution. alight's own result on the coarse \SI{0.1}{in} mesh alone, before extrapolation, moves about half-way to the published curve (7\,\% instead of 14\,\% on the plateau, peak at 4.47\,s). The resolution of the published burnback is not reported, so this is an inference, not a finding. The measured trace, finally, is higher and much shorter than every simulation (plateau 68\,atm, equal to the \SI{1000}{psi} design pressure; burnout near 3.3\,s). Willcox et al. attribute that to erosive burning in the long, narrow star section, which no 0-D model captures; alight's plateau (59\,atm at \SI{3}{s}) is closer to it than the published 0-D run (51\,atm) but the measurement does not test the burnback.
 
 \section{Portability}
 
@@ -294,7 +298,7 @@ build123d and gmsh, all of which publish Windows wheels, and calls nothing platf
   practical meshes. Extrapolating two meshes at fixed fraction burned removes that: results then
   agree within 0.35\,\% across mesh pairs and within 0.6\,\% of an independent fast-marching
   solution.
-\item For NAWC motor no.~6, with $c^*$ fitted as the one free constant, the pressure plateau agrees with the published three-dimensional burnback simulation within 1.4\,\% RMS and the peak within 3\,\% in level and time; the tail-off is 14\,\% shorter. Without the fit the pressure is 14\,\% higher.
+\item For NAWC motor no.~6, alight agrees with the published three-dimensional burnback simulation in initial burn area (2\,\%), pressure integral (3\,\%) and web at peak pressure (4\,\%), but its pressure is 14\,\% higher before the peak and it tails off sooner. The published curve implies a smoother burn-area history than the tabulated geometry gives at mesh convergence.
 \item Limits: uniform burn rate over the surface at each instant, so no erosive burning or axial
   pressure drop; no throat erosion or ignition transient; propellant values in the worked example
   are representative, not a qualified formulation. No Solid Performance Program (SPP) case could be

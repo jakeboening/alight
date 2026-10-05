@@ -105,7 +105,7 @@ therefore solves two meshes and extrapolates to zero element size. What that buy
 | Closed-form tube, BATES and star grains, 15 geometries ([example 02](examples/02_analytic_validation)) | burn area within 0.27 % of the closed form over the first 95 % of the web (one BATES case 0.79 % next to its burnout discontinuity); RMS at most 0.20 % |
 | Finocyl mesh sensitivity, 0.4 to 0.05 in elements ([example 01](examples/01_finocyl)) | raw peak pressure drifts 5.6 %; extrapolated pairs agree within 0.35 %, the last two within 0.05 % |
 | Same finocyl against an independent fast-marching solution | 0.55 % in peak pressure, 0.26 % in burn time, 0.22 % in total impulse |
-| NAWC motor no. 6 against a published 3-D burnback simulation ([example 03](examples/03_nawc_motor6)) | with c* fitted as the one free constant: plateau pressure within 1.4 % RMS, peak within 3 % in level and time, tail-off 14 % shorter; 14 % higher pressure without the fit |
+| NAWC motor no. 6 against a published 3-D burnback simulation ([example 03](examples/03_nawc_motor6)) | initial burn area within 2 %, pressure integral within 3 %, web at peak pressure within 4 %; pressure before the peak 14 % higher and the tail-off sooner (see the report) |
 
 The report, [`report/src/alight_whitepaper.pdf`](report/src/alight_whitepaper.pdf), has the method and
 these results in full. Not modelled: erosive burning, axial pressure drop, throat erosion, ignition
